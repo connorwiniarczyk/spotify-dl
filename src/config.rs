@@ -1,6 +1,6 @@
 use inquire::{Text, Password, Confirm};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 
 use std::io::Error as IOError;
 use inquire::error::InquireError;
@@ -137,8 +137,19 @@ impl ConfigBuilder {
     }
 
     fn save_creds(&self) -> Result<(), Error> {
+        let mut file = File::create("creds.txt")?;
+
+        match (self.username.as_ref(), self.password.as_ref()) {
+            (Some(u), Some(p)) => {
+                let username_line = format!("username={}\n", u);
+                let password_line = format!("password={}\n", p);
+                file.write_all(&username_line.as_bytes())?;
+                file.write_all(&password_line.as_bytes())?;
+            },
+            _ => (),
+        }
+
         Ok(())
-        // todo!();
     }
 
     pub fn prompt_user(&mut self) -> Result<(), Error> {
