@@ -48,7 +48,9 @@ fn format_from_url(original: & str) -> String {
 pub struct Config {
     pub username: String,
     pub password: String,
-    pub uri: String,
+
+    pub audio_type: String,
+    pub id: String,
 }
 
 impl Config {
@@ -58,13 +60,20 @@ impl Config {
         let mut args = std::env::args();
         args.next();
         let url = args.next();
-        output.uri = url.map(|x| format_from_url(&x));
 
-        output.read_creds_file("./creds.txt");
+        if let Some(url) = url {
+            output.parse_url(&url);
+        }
+
+        output.read_creds_file("./spotify-dl.conf");
         output.prompt_user();
 
         output.try_into().unwrap()
+    }
 
+
+    pub fn uri(&self) -> String {
+        format!("spotify:{}:{}", self.audio_type, self.id)
     }
 }
 
@@ -74,7 +83,8 @@ impl TryFrom<ConfigBuilder> for Config {
         let out = Self {
             username: value.username.ok_or("no username")?,
             password: value.password.ok_or("no password")?,
-            uri: value.uri.ok_or("uri")?,
+            audio_type: value.audio_type.ok_or("no audio type")?,
+            id: value.id.ok_or("no id")?,
         };
 
         Ok(out)
@@ -85,32 +95,40 @@ impl TryFrom<ConfigBuilder> for Config {
 pub struct ConfigBuilder {
     pub username: Option<String>,
     pub password: Option<String>,
-    pub uri: Option<String>,
+    pub audio_type: Option<String>,
+    pub id: Option<String>,
 }
 
 
 impl ConfigBuilder { 
     pub fn new() -> Self {
-        format_from_url("open.spotify.com/abcd/efg");
-        Self {username: None, password: None, uri: None}
+        Self {username: None, password: None, audio_type: None, id: None}
     }
 
-    // pub fn generate() -> Self {
-    //     let mut output = Self::new();
+    pub fn parse_url(&mut self, url: &str) -> Result<(), Error> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r#"open\.spotify\.com/(?P<type>.+?)/(?P<id>.+?)$"#).unwrap();
+        }
 
-    //     let mut args = std::env::args();
-    //     args.next();
-    //     let url = args.next();
-    //     output.uri = url.map(|x| format_from_url(&x));
+        let captures = RE.captures(url)
+            .ok_or("could not parse url")?;
 
-    //     output.read_creds_file("./creds.txt");
-    //     output.prompt_user();
+        let audio_type = captures.name("type")
+            .ok_or("could not parse url")?
+            .as_str();
 
-    //     return output;
-    // }
+        let id = captures.name("id")
+            .ok_or("could not parse url")?
+            .as_str();
+
+        self.audio_type = Some(audio_type.into());
+        self.id = Some(id.into());
+
+        Ok(())
+    }
 
     pub fn read_creds_file(&mut self, path: &str) -> Result<(), Error> {
-        let file = File::open("creds.txt")?;
+        let file = File::open("spotify-dl.conf")?;
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
 
@@ -137,7 +155,7 @@ impl ConfigBuilder {
     }
 
     fn save_creds(&self) -> Result<(), Error> {
-        let mut file = File::create("creds.txt")?;
+        let mut file = File::create("spotify-dl.conf")?;
 
         match (self.username.as_ref(), self.password.as_ref()) {
             (Some(u), Some(p)) => {
@@ -177,9 +195,9 @@ impl ConfigBuilder {
             if save { self.save_creds(); }
         }
 
-        if self.uri == None {
+        if self.id == None {
             let url = Text::new("Playlist:").prompt()?;
-            self.uri = Some(format_from_url(&url));
+            self.parse_url(&url)?;
         }
 
         Ok(())
