@@ -1927,6 +1927,7 @@ name = "spotify-dl"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "futures",
  "inquire",
  "lazy_static",
  "librespot",
