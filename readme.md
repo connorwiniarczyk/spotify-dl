@@ -35,45 +35,19 @@ spotify-dl https://open.spotify.com/album/6IGDCUkBJ3LEUoAcoTD46u
 This will download each track from the album Yesterday's Tomorrow into a new
 folder called Yesterday's Tomorrow. Files are automatically converted to the 
 [FLAC](https://xiph.org/flac/) codec, but this can be changed by modifying the
-source and recompiling.
+source and recompiling. (main.rs, line 72)
 
+### How It Works
 
-```rust
-async fn download_track(track: Track, track_id: SpotifyId, config: &Config, session: &Session) {
-	// modify the .flac in this line (main.rs:72) to any file format understood by ffmpeg
-    let output_path = format!("{}.flac", track.name);
+As far as I know, nothing in the librespot library allows you to directly
+download audio from Spotify, but it does give you the option to use the
+process's stdout as a playback device, allowing you to pipe the audio to
+another program or save it directly to a file. It also gives you the option to
+"play" the audio directly as ogg packets instead of decoding them first.
 
-    let track_info = TrackInfo::get(&track, session).await;
-    println!("{}", &track.name);
-    // let output = File::create(&output_path).expect("failed to open file");
-    let mut downloader = Command::new("spot-dl")
-        .arg(&config.username)
-        .arg(&config.password)
-        .arg(&track_id.to_base62().unwrap())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to open process");
-
-    let downloader_out: Stdio = downloader
-        .stdout
-        .take()
-        .unwrap()
-        .try_into()
-        .unwrap();
-
-    let mut converter = Command::new("ffmpeg")
-        .arg("-f").arg("ogg")
-        .arg("-i").arg("pipe:")
-        .arg("-metadata").arg(&format!("title={}", track_info.name))
-        .arg("-metadata").arg(&format!("album={}", track_info.name))
-        .arg("-metadata").arg(&format!("artist={}", track_info.artists[0])) // TODO: multiple artists
-        .arg(&output_path)
-        .stdin(downloader_out)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to open process");
-
-    futures::join!(downloader.wait(), converter.wait());
-}
-```
+This tool includes a binary called `spotify-direct-play` which is a very simple
+spotify client that takes a username, password, and track id as arguments and
+"plays" the entirety of the track to stdout before exiting. spotify-dl spawns
+an instance of spotify-direct-play for every track it is given, and directs its
+output into an instance of ffmpeg which transcodes the audio into FLAC and tags
+it with the appropriate metadata before saving it to a local file.
