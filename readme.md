@@ -4,7 +4,7 @@ This is a cli tool for downloading Spotify tracks, albums, and playlists onto
 a local disk using the [librespot](https://github.com/librespot-org/librespot)
 library.
 
-### Installation
+## Installation
 
 Installing spotify-dl requires [ffmpeg](https://ffmpeg.org/) and the
 [rust toolchain](https://www.rust-lang.org/tools/install).
@@ -21,7 +21,7 @@ cd spotify-dl
 cargo install --path .
 ```
 
-### Usage
+## Usage
 
 You must have a premium Spotify account to use this script. When you run it
 for the first time it will prompt you for your username and password. It will
@@ -37,7 +37,7 @@ folder called Yesterday's Tomorrow. Files are automatically converted to the
 [FLAC](https://xiph.org/flac/) codec, but this can be changed by modifying the
 source and recompiling. (main.rs, line 72)
 
-### How It Works
+## How It Works
 
 As far as I know, nothing in the librespot library allows you to directly
 download audio from Spotify, but it does give you the option to use the
