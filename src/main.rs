@@ -74,7 +74,7 @@ async fn download_track(track: Track, track_id: SpotifyId, config: &Config, sess
     let track_info = TrackInfo::get(&track, session).await;
     println!("{}", &track.name);
     // let output = File::create(&output_path).expect("failed to open file");
-    let mut downloader = Command::new("spot-dl")
+    let mut downloader = Command::new("spotify-direct-play")
         .arg(&config.username)
         .arg(&config.password)
         .arg(&track_id.to_base62().unwrap())
@@ -132,14 +132,16 @@ async fn main() {
         "playlist" => {
             let playlist = Playlist::get(&session, source_id).await.expect("failed to fetch playlist");
             println!("{}", &playlist.name);
-            std::fs::create_dir(&playlist.name).expect("could not create directory for playlist");
+            // std::fs::create_dir(&playlist.name).expect("could not create directory for playlist");
+            std::fs::create_dir("playlist").expect("could not create directory for playlist");
             std::env::set_current_dir(current_dir().unwrap().join(&playlist.name));
             playlist.tracks
         }, 
         "album" => {
             let album = Album::get(&session, source_id).await.expect("failed to fetch album");
             println!("{}", &album.name);
-            std::fs::create_dir(&album.name).expect("could not create directory for album");
+            // std::fs::create_dir(&album.name).expect("could not create directory for album");
+            std::fs::create_dir("playlist").expect("could not create directory for album");
             std::env::set_current_dir(current_dir().unwrap().join(&album.name));
             album.tracks
         }, 
