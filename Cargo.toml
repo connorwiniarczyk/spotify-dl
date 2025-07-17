@@ -2,23 +2,20 @@
 name = "spotify-dl"
 version = "0.1.0"
 edition = "2021"
-default-run = "spotify-dl"
+default-run = "login"
 
 [[bin]]
-name = "spotify-dl"
+name = "login"
 path = "src/main.rs"
 
-[[bin]]
-name = "spotify-direct-play"
-path = "src/download.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-librespot = "0.4.2"
+# librespot = "0.4.2"
+librespot = "0.6.0"
 tokio = "1.20.1"
-inquire = "0.3.0"
-clap = "3.2.17"
-regex = "1.6"
-lazy_static = "1.4"
-futures = "0.3"
+# inquire = "0.3.0"
+# clap = "3.2.17"
+# regex = "1.6"
+# lazy_static = "1.4"
