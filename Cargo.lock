@@ -2939,7 +2939,10 @@ dependencies = [
 name = "spotify-dl"
 version = "0.1.0"
 dependencies = [
+ "futures-executor",
+ "lazy_static",
  "librespot",
+ "regex",
  "tokio",
 ]
 
