@@ -13,6 +13,9 @@ use librespot::playback::mixer;
 
 use futures_executor::block_on;
 
+use std::process::Stdio;
+use std::process::Command;
+
 // use librespot::metadata::{
 // Metadata,
 // Playlist,
@@ -52,6 +55,7 @@ fn try_automatic_login(session: &Session) -> Result<(), ()> {
     let token_cache = "access_token.txt";
 
     let token = std::fs::read_to_string(token_cache).or(Err(()))?;
+    env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &token);
     let creds = Credentials::with_access_token(token);
 
     block_on(session.connect(creds, false)).or(Err(()))?;
@@ -74,6 +78,8 @@ fn try_manual_login(session: &Session) -> Result<(), ()> {
     	println!("could not save access token");
     }
 
+    env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &oauth_token.access_token);
+
     let creds = Credentials::with_access_token(oauth_token.access_token);
     block_on(session.connect(creds, false)).or(Err(()))?;
 
@@ -86,6 +92,47 @@ fn get_track(input: Option<&str>) -> Option<SpotifyId> {
 
 	// let id = SpotifyId::from_uri(&reformat_spotify_uri(&uri).unwrap()).expect("invalid uri");
 }
+
+
+fn run_track_downloader(track_id: SpotifyId, session: &Session) {
+    // let output_path = format!("{}.flac", track.name);
+
+    // let track_info = TrackInfo::get(&track, session).await;
+    // println!("{}", &track.name);
+    // let output = File::create(&output_path).expect("failed to open file");
+    let mut downloader = Command::new("download")
+        .arg(&track_id.to_base62().unwrap())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to open process");
+
+    let downloader_out: Stdio = downloader
+        .stdout
+        .take()
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    let mut converter = Command::new("ffmpeg")
+        .arg("-f").arg("ogg")
+        .arg("-i").arg("pipe:")
+        // .arg("-metadata").arg(&format!("title={}", track_info.name))
+        // .arg("-metadata").arg(&format!("album={}", track_info.name))
+        // .arg("-metadata").arg(&format!("artist={}", track_info.artists[0]))
+        .arg("test.ogg")
+        .stdin(downloader_out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to open ffmpeg");
+
+	downloader.wait();
+	println!("downloader done");
+	converter.wait();
+	println!("converter done");
+}
+
+
 
 #[tokio::main]
 async fn main() {
@@ -107,23 +154,25 @@ async fn main() {
     let track = get_track(Some(arg)).expect("failed to get track");
 
 
-    let mut player_config = playback_config::PlayerConfig::default();
-    player_config.passthrough = true;
-    let audio_format = playback_config::AudioFormat::default();
+    // let mut player_config = playback_config::PlayerConfig::default();
+    // player_config.passthrough = true;
+    // let audio_format = playback_config::AudioFormat::default();
 
     // let track = SpotifyId::from_base62(&args.next().unwrap()).unwrap();
     // let backend = audio_backend::find(Some("pipe".to_string())).unwrap();
 
     // let (session, creds) = Session::connect(session_config, credentials, None, false).await.expect("error connecting");
 
-    let mut player = player::Player::new(player_config, session, Box::new(mixer::NoOpVolume), move || {
-        backend(None, audio_format)
-    });
+    // let mut player = player::Player::new(player_config, session, Box::new(mixer::NoOpVolume), move || {
+    //     backend(None, audio_format)
+    // });
 
     println!("playing track");
 
-    player.load(track, true, 0);
-    player.await_end_of_track().await;
+    run_track_downloader(track, &session);
+
+    // player.load(track, true, 0);
+    // player.await_end_of_track().await;
 
 	// if let Some(uri) = args.next() {
  //    	let id = SpotifyId::from_uri(&reformat_spotify_uri(&uri).unwrap()).expect("invalid uri");
