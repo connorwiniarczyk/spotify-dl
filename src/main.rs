@@ -11,18 +11,20 @@ use librespot::playback::config as playback_config;
 use librespot::playback::player;
 use librespot::playback::mixer;
 
+use std::time;
+
 use futures_executor::block_on;
 
 use std::process::Stdio;
 use std::process::Command;
 
-// use librespot::metadata::{
-// Metadata,
-// Playlist,
-// Track,
-// Album,
-// Artist,
-// };
+use librespot::metadata::{
+    Metadata,
+    Playlist,
+    Track,
+    // Album,
+    // Artist,
+};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -36,7 +38,7 @@ fn get_stored_access_token() -> Option<String> {
 	return std::fs::read_to_string("access_token.txt").ok();
 }
 
-fn reformat_spotify_uri(input: &str) -> Result<String, ()> {
+fn parse_spotify_link(input: &str) -> Result<SpotifyId, ()> {
     lazy_static! {
         static ref RE: Regex = Regex::new(r#"open\.spotify\.com/(?P<type>.+?)/(?P<id>.+?)$"#).unwrap();
     }
@@ -47,8 +49,9 @@ fn reformat_spotify_uri(input: &str) -> Result<String, ()> {
     let id_full = captures.name("id").ok_or(())?.as_str();
     let id = id_full.split("?").next().unwrap();
 
-    return Ok(format!("spotify:{}:{}", audio_type, id));
+    let uri = format!("spotify:{}:{}", audio_type, id);
 
+    return SpotifyId::from_uri(&uri).or(Err(()))
 }
 
 fn try_automatic_login(session: &Session) -> Result<(), ()> {
@@ -86,22 +89,28 @@ fn try_manual_login(session: &Session) -> Result<(), ()> {
     Ok(())
 }
 
-fn get_track(input: Option<&str>) -> Option<SpotifyId> {
-    let spotify_formatted_uri = reformat_spotify_uri(input?).ok()?;
-    return SpotifyId::from_uri(&spotify_formatted_uri).ok()
+fn run_track_downloader(id: SpotifyId, session: &Session) -> Result<(), ()> {
+    let track = block_on(Track::get(session, &id)).or(Err(()))?;
 
-	// let id = SpotifyId::from_uri(&reformat_spotify_uri(&uri).unwrap()).expect("invalid uri");
-}
+    let mut artists = String::new();
 
+    let mut i = 0;
+    while i < track.artists.len() {
+        artists.push_str(track.artists[i].name.as_str());
+        i += 1;
+        if i < track.artists.len() {
+            artists.push_str(",");
+        }
+    }
 
-fn run_track_downloader(track_id: SpotifyId, session: &Session) {
-    // let output_path = format!("{}.flac", track.name);
+    let uri = format!("spotify:track:{}", id.to_base62().unwrap());
+    let output_path = format!("{}.ogg", track.name);
 
-    // let track_info = TrackInfo::get(&track, session).await;
-    // println!("{}", &track.name);
-    // let output = File::create(&output_path).expect("failed to open file");
-    let mut downloader = Command::new("download")
-        .arg(&track_id.to_base62().unwrap())
+    println!("downloading {} [{}]", track.name, artists);
+
+    // let mut downloader = Command::new("../target/debug/spotify-dl-downloader")
+    let mut downloader = Command::new("spotify-dl-downloader")
+        .arg(uri)
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to open process");
@@ -116,30 +125,93 @@ fn run_track_downloader(track_id: SpotifyId, session: &Session) {
     let mut converter = Command::new("ffmpeg")
         .arg("-f").arg("ogg")
         .arg("-i").arg("pipe:")
-        // .arg("-metadata").arg(&format!("title={}", track_info.name))
-        // .arg("-metadata").arg(&format!("album={}", track_info.name))
-        // .arg("-metadata").arg(&format!("artist={}", track_info.artists[0]))
-        .arg("test.ogg")
+        .arg("-metadata").arg(&format!("title={}", track.name))
+        .arg("-metadata").arg(&format!("album={}", track.album.name))
+        .arg("-metadata").arg(&format!("artist={}", artists))
+        .arg(output_path)
         .stdin(downloader_out)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .expect("failed to open ffmpeg");
 
-	downloader.wait();
-	println!("downloader done");
-	converter.wait();
-	println!("converter done");
+	let mut downloader_done = false;
+	let mut converter_done = false;
+
+	let time_begin = std::time::Instant::now();
+
+	while !downloader_done && !converter_done {
+    	match downloader.try_wait() {
+        	Ok(Some(status)) => {
+            	downloader_done = true;
+            	if !status.success() {
+                	converter.kill();
+            	}
+        	},
+        	Ok(None)    => { },
+        	Err(e)      => { println!("error: {:?}", e); },
+    	};
+
+    	match converter.try_wait() {
+        	Ok(Some(status)) => {
+            	converter_done = true;
+            	if !status.success() {
+                	downloader.kill();
+            	}
+        	},
+        	Ok(None)    => { },
+        	Err(e)      => { },
+    	};
+
+    	if time_begin.elapsed().as_secs() > 20 {
+        	println!("timed out, aborting");
+        	converter.kill();
+        	downloader.kill();
+        	return Err(());
+    	}
+
+    	std::thread::sleep(time::Duration::from_millis(100));
+	}
+
+	return Ok(())
 }
 
+fn get_tracks_to_download(id: SpotifyId, session: &Session) -> Vec<SpotifyId> {
+    let mut output = Vec::new();
 
+	match id.item_type {
+    	SpotifyItemType::Playlist => {
+
+            let playlist = block_on(Playlist::get(&session, &id)).expect("failed to fetch playlist");
+            let mut count = 0;
+
+            let _ = std::fs::create_dir(&playlist.name());
+            env::set_current_dir(env::current_dir().unwrap().join(&playlist.name()));
+
+			for track in playlist.tracks() {
+    			output.push(*track);
+    			count += 1;
+			}
+            println!("found playlist: {} with {} songs", playlist.name(), count);
+
+    	},
+    	SpotifyItemType::Album    => println!("album"),
+    	SpotifyItemType::Artist   => println!("artist"),
+    	SpotifyItemType::Track    => println!("track"),
+    	SpotifyItemType::Episode  => println!("episode"),
+    	SpotifyItemType::Show     => println!("show"),
+    	SpotifyItemType::Local    => println!("local"),
+    	SpotifyItemType::Unknown  => println!("unknown"),
+	}
+
+	return output;
+}
 
 #[tokio::main]
 async fn main() {
-    // let mut args = env::args();
-    // args.next();
-
-    let arg = "https://open.spotify.com/track/0qOjRPOrzbMT3KkruSmL2P?si=c732c3b04f3645a9";
+    let mut args = std::env::args();
+    _ = args.next();
+    let arg = args.next().expect("paste a spotify link as an argument");
 
     let config = SessionConfig::default();
     let session = Session::new(config, None);
@@ -149,42 +221,12 @@ async fn main() {
         try_manual_login(&session).expect("failed to login");
     }
 
-    let backend = audio_backend::find(Some("pipe".to_string())).expect("couldn't open the pipe audio backend");
-    // let backend = audio_backend::find(Some("rodio".to_string())).expect("couldn't open the pipe audio backend");
-    let track = get_track(Some(arg)).expect("failed to get track");
+	let id = parse_spotify_link(&arg).expect("invalid link");
+	let tracks = get_tracks_to_download(id, &session);
 
-
-    // let mut player_config = playback_config::PlayerConfig::default();
-    // player_config.passthrough = true;
-    // let audio_format = playback_config::AudioFormat::default();
-
-    // let track = SpotifyId::from_base62(&args.next().unwrap()).unwrap();
-    // let backend = audio_backend::find(Some("pipe".to_string())).unwrap();
-
-    // let (session, creds) = Session::connect(session_config, credentials, None, false).await.expect("error connecting");
-
-    // let mut player = player::Player::new(player_config, session, Box::new(mixer::NoOpVolume), move || {
-    //     backend(None, audio_format)
-    // });
-
-    println!("playing track");
-
-    run_track_downloader(track, &session);
-
-    // player.load(track, true, 0);
-    // player.await_end_of_track().await;
-
-	// if let Some(uri) = args.next() {
- //    	let id = SpotifyId::from_uri(&reformat_spotify_uri(&uri).unwrap()).expect("invalid uri");
- //    	match id.item_type {
- //        	SpotifyItemType::Album    => println!("album"),
- //        	SpotifyItemType::Artist   => println!("artist"),
- //        	SpotifyItemType::Track    => println!("track"),
- //        	SpotifyItemType::Playlist => println!("playlist"),
- //        	SpotifyItemType::Episode  => println!("episode"),
- //        	SpotifyItemType::Show     => println!("show"),
- //        	SpotifyItemType::Local    => println!("local"),
- //        	SpotifyItemType::Unknown  => println!("unknown"),
- //    	}
-	// }
+	for id in tracks {
+        if run_track_downloader(id, &session).is_err() {
+            println!("failed");
+        }
+	}
 }

@@ -9,14 +9,15 @@ name = "spotify-dl"
 path = "src/main.rs"
 
 [[bin]]
-name = "download"
+name = "spotify-dl-downloader"
 path = "src/download.rs"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-librespot = "0.6.0"
+librespot = { version = "0.6.0", features = ["passthrough-decoder"] }
+
 tokio = "1.20.1"
 # inquire = "0.3.0"
 # clap = "3.2.17"
