@@ -130,8 +130,8 @@ fn run_track_downloader(id: SpotifyId, session: &Session) -> Result<(), ()> {
         .arg("-metadata").arg(&format!("artist={}", artists))
         .arg(output_path)
         .stdin(downloader_out)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
         .spawn()
         .expect("failed to open ffmpeg");
 

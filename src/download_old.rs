@@ -28,7 +28,7 @@ async fn main() {
     let session_config = SessionConfig::default();
 
     let mut player_config = PlayerConfig::default();
-    player_config.passthrough = true;
+    // player_config.passthrough = true;
 
     let audio_format = AudioFormat::default();
     let track = SpotifyId::from_base62(&args.next().unwrap()).unwrap();
@@ -36,7 +36,7 @@ async fn main() {
 
     let (session, creds) = Session::connect(session_config, credentials, None, false).await.expect("error connecting");
     let (mut player, _) = Player::new(player_config, session, Box::new(NoOpVolume), move || {
-        backend(None, audio_format)
+        backend(Some(), audio_format)
     });
 
     player.load(track, true, 0);

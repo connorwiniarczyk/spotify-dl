@@ -17,7 +17,6 @@ path = "src/download.rs"
 
 [dependencies]
 librespot = { version = "0.6.0", features = ["passthrough-decoder"] }
-
 tokio = "1.20.1"
 # inquire = "0.3.0"
 # clap = "3.2.17"
