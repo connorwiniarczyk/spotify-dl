@@ -8,9 +8,9 @@ default-run = "spotify-dl"
 name = "spotify-dl"
 path = "src/main.rs"
 
-[[bin]]
-name = "spotify-dl-downloader"
-path = "src/download.rs"
+# [[bin]]
+# name = "spotify-dl-downloader"
+# path = "src/download.rs"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,4 +23,6 @@ tokio = "1.20.1"
 regex = "1.6"
 lazy_static = "1.4"
 futures-executor = "^0.3.31"
+# easy-repl = "0.2.1"
+dialoguer = "0.11.0"
 # futures = "^0.3.31"
