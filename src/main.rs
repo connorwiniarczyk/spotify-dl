@@ -12,7 +12,6 @@ use librespot::playback::player::PlayerEvent;
 use librespot::playback::mixer;
 
 use futures_executor::block_on;
-
 use librespot::metadata::{
     Metadata,
     Playlist,
@@ -89,8 +88,6 @@ fn get_tracks_to_download(id: SpotifyId, session: &Session) -> Vec<SpotifyId> {
 	match id.item_type {
     	SpotifyItemType::Playlist => {
             let playlist = block_on(Playlist::get(&session, &id)).expect("failed to fetch playlist");
-            println!("{:#?}", playlist);
-
             let mut count = 0;
 			for track in playlist.tracks() {
     			output.push(*track);
@@ -101,7 +98,6 @@ fn get_tracks_to_download(id: SpotifyId, session: &Session) -> Vec<SpotifyId> {
 
     	SpotifyItemType::Album => {
             let album = block_on(Album::get(&session, &id)).expect("failed to fetch playlist");
-            println!("{:#?}", album);
             let mut count = 0;
 			for track in album.tracks() {
     			output.push(*track);
@@ -131,8 +127,11 @@ async fn record_track(track: SpotifyId, session: Session) -> Result<(), ()> {
 
     let path = format!("spotify-dl/{}.ogg", track.to_base62().unwrap());
 
-    if std::fs::Path::exists(path) {
-        println!("skipping {}, already exists");
+    if std::path::Path::new(&path).exists() {
+        println!("skipping {} ({}), already exists", track.to_base62().unwrap(), metadata.name);
+        return Err(());
+    } else {
+        println!("fetching {} ({})", track.to_base62().unwrap(), metadata.name);
     }
 
     let player = player::Player::new(player_config, session, Box::new(mixer::NoOpVolume), move || {
@@ -146,23 +145,25 @@ async fn record_track(track: SpotifyId, session: Session) -> Result<(), ()> {
         match event {
             PlayerEvent::Playing      {..} => {},
             PlayerEvent::TrackChanged {..} => {},
+            PlayerEvent::TimeToPreloadNextTrack {..} => (),
+
             PlayerEvent::Unavailable  {..} => {
                 println!("spotify:track:{} is unavailable, aborting", track.to_base62().unwrap());
-                break;
+                return Err(());
             },
 
             PlayerEvent::Paused {..} => {
                 println!("player paused, aborting");
                 player.stop();
-                break;
+                return Err(());
             },
 
             PlayerEvent::EndOfTrack {..} => {
+                println!("done");
                 player.stop();
                 break;
             },
 
-            PlayerEvent::TimeToPreloadNextTrack {..} => (),
             event => println!("{:?}", event),
         }
     }

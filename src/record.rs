@@ -70,9 +70,9 @@ impl Sink for RecordSink {
     }
 
     fn stop(&mut self) -> SinkResult<()> {
-        if let Err(_) = self.process.wait() {
-            return Err(SinkError::OnWrite("failed to await ffmpeg".to_owned()));
-        }
+        // if let Err(_) = self.process.wait() {
+        //     return Err(SinkError::OnWrite("failed to await ffmpeg".to_owned()));
+        // }
 
         Ok(())
     }
@@ -89,5 +89,3 @@ impl Sink for RecordSink {
         Ok(())
     }
 }
-
-
