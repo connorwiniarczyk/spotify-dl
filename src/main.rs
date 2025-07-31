@@ -1,55 +1,32 @@
 #![allow(unused_imports, dead_code)]
 
-use std::path::Path;
-use sanitise_file_name::sanitise;
-
-use std::process::Command;
-
-// use librespot::core::authentication::Credentials;
-use librespot::core::config::SessionConfig;
-use librespot::core::session::Session;
-// use librespot::oauth;
-// use librespot::playback::config as playback_config;
-// use librespot::playback::player;
-// use librespot::playback::player::PlayerEvent;
-// use librespot::playback::mixer;
-
-use librespot::core::spotify_id::SpotifyId;
-use librespot::core::spotify_id::SpotifyItemType;
-
-use futures_executor::block_on;
-
-use librespot::metadata::{
-    Metadata,
-//     Playlist,
-    Track,
-//     Album,
-//     // Artist,
-};
-
-
 mod record;
 mod spotify;
-
 use record::RecordSink;
-// use spotify;
 
+use librespot::core::config::SessionConfig;
+use librespot::core::session::Session;
+use librespot::core::spotify_id::SpotifyId;
+use librespot::core::spotify_id::SpotifyItemType;
+use librespot::metadata::{
+    Metadata,
+    Track,
+};
+
+use sanitise_file_name::sanitise;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor};
 
-use std::io::Write;
-use std::env;
+use console::Style;
+use console::Term;
+
+use futures_executor::block_on;
 
 use tokio;
-
-
-// use console::Term;
-use console::Style;
-
-#[allow(unused_imports)]
-use dialoguer::Input;
-use dialoguer::console::Term;
-use dialoguer;
+use std::io::Write;
+use std::env;
+use std::path::Path;
+use std::process::Command;
 
 struct AppState {
     session: Session,
@@ -82,7 +59,13 @@ impl AppState {
     }
 
     pub fn usage(&self) {
-        println!("command syntax will go here");
+        println!();
+        println!("Commands");
+        println!("--------");
+        println!("download <link>      - download the contents of the Playlist, Album or Track");
+        println!("export <path> <link> - download the contents of <link> and then copy them to <path>");
+        println!("help                 - print this message");
+        println!();
     }
 
     pub fn login(&self) -> Result<(), ()> {
@@ -135,8 +118,7 @@ fn download(id: SpotifyId, ctx: &mut AppState, export_path: Option<&Path>) -> Re
 
     	if let Some(p) = export_path {
         	let metadata = block_on(Track::get(&ctx.session, &track_id)).unwrap();
-        	let mut dest = p.join(sanitise(&metadata.name)).with_extension("ogg");
-        	let mut src = path.clone();
+        	let dest = p.join(sanitise(&metadata.name)).with_extension("ogg");
 			if std::fs::copy(path, dest).is_err() {
     			// println!("copy failed");
 			}
@@ -154,10 +136,7 @@ fn handle_command(cmd: String, ctx: &mut AppState) -> Result<(), ()>{
         "" => return Ok(()),
         "h" | "?" | "help" => ctx.usage(),
 
-        "logout" => {
-            println!("logging out");
-            ctx.session.shutdown();
-        },
+        "q" | "quit" | "exit" => return Err(()),
 
         "d" | "download" => {
             let arg = iter.next().expect("no arg after download command");
@@ -183,7 +162,6 @@ fn handle_command(cmd: String, ctx: &mut AppState) -> Result<(), ()>{
 
 fn test_ffmpeg() -> Result<(), ()> {
     let output = Command::new("ffmpeg").arg("-version").output().map_err(|_| ())?;
-    // let output = cmd.output().map_err(|e| ())?;
 
     if output.status.code() == Some(0) {
         Ok(())
@@ -213,7 +191,9 @@ async fn main() {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str()).unwrap();
-                handle_command(line, &mut ctx).unwrap();
+                if handle_command(line, &mut ctx).is_err() {
+                    break;
+                }
             },
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
