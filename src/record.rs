@@ -1,9 +1,4 @@
-
-
-
 use librespot::playback::audio_backend::{ Sink, SinkError, SinkResult};
-
-
 // use librespot::playback::config::AudioFormat;
 use librespot::playback::decoder::AudioPacket;
 use librespot::playback::convert::Converter;
@@ -16,17 +11,18 @@ use librespot::metadata::{
     // Artist,
 };
 
+use std::path::Path;
 use std::process::Stdio;
 use std::process::Command;
 use std::io::Write;
 
+#[allow(dead_code)]
 pub struct RecordSink {
     process: std::process::Child,
     stream:  std::process::ChildStdin,
 }
 
 impl RecordSink {
-
     fn get_artists_string(track: &Track) -> String {
 		let mut artists = String::new();
         let mut i = 0;
@@ -41,8 +37,8 @@ impl RecordSink {
         return artists
     }
 
-    pub fn create(track: Track) -> Box<dyn Sink> {
-        let path = format!("spotify-dl/{}.ogg", track.id.to_base62().unwrap());
+    pub fn create(path: &Path, track: Track) -> Box<dyn Sink> {
+        // let path = format!("{}.ogg", track.id.to_base62().unwrap());
         let artists = Self::get_artists_string(&track);
 
         let mut process = Command::new("ffmpeg")
@@ -70,10 +66,6 @@ impl Sink for RecordSink {
     }
 
     fn stop(&mut self) -> SinkResult<()> {
-        // if let Err(_) = self.process.wait() {
-        //     return Err(SinkError::OnWrite("failed to await ffmpeg".to_owned()));
-        // }
-
         Ok(())
     }
 

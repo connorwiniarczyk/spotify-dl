@@ -1,204 +1,232 @@
-use librespot::core::authentication::Credentials;
+#![allow(unused_imports, dead_code)]
+
+use std::path::Path;
+use sanitise_file_name::sanitise;
+
+use std::process::Command;
+
+// use librespot::core::authentication::Credentials;
 use librespot::core::config::SessionConfig;
 use librespot::core::session::Session;
-use librespot::oauth;
+// use librespot::oauth;
+// use librespot::playback::config as playback_config;
+// use librespot::playback::player;
+// use librespot::playback::player::PlayerEvent;
+// use librespot::playback::mixer;
 
 use librespot::core::spotify_id::SpotifyId;
 use librespot::core::spotify_id::SpotifyItemType;
 
-use librespot::playback::config as playback_config;
-use librespot::playback::player;
-use librespot::playback::player::PlayerEvent;
-use librespot::playback::mixer;
-
 use futures_executor::block_on;
+
 use librespot::metadata::{
     Metadata,
-    Playlist,
+//     Playlist,
     Track,
-    Album,
-    // Artist,
+//     Album,
+//     // Artist,
 };
 
-use lazy_static::lazy_static;
-use regex::Regex;
+
+mod record;
+mod spotify;
+
+use record::RecordSink;
+// use spotify;
+
+use rustyline::error::ReadlineError;
+use rustyline::{DefaultEditor};
 
 use std::io::Write;
 use std::env;
 
 use tokio;
 
-mod record;
-use record::RecordSink;
 
-fn parse_spotify_link(input: &str) -> Result<SpotifyId, ()> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r#"open\.spotify\.com/(?P<type>.+?)/(?P<id>.+?)$"#).unwrap();
+// use console::Term;
+use console::Style;
+
+#[allow(unused_imports)]
+use dialoguer::Input;
+use dialoguer::console::Term;
+use dialoguer;
+
+struct AppState {
+    session: Session,
+    terminal: Term,
+    highlight: Style,
+}
+
+impl AppState {
+    pub fn new(terminal: Term) -> Self {
+        terminal.clear_screen().unwrap();
+
+		// init working directory
+        let home = std::env::home_dir().expect("could not find home dir");
+        let workdir = home.join("Music/spotify-dl");
+    	std::fs::create_dir_all(&workdir).unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let session = Session::new(SessionConfig::default(), None);
+        let highlight = Style::new().cyan();
+        Self { session, terminal, highlight }
     }
 
-    let captures = RE.captures(input).ok_or(())?;
-    let audio_type = captures.name("type").ok_or(())?.as_str();
-
-    let id_full = captures.name("id").ok_or(())?.as_str();
-    let id = id_full.split("?").next().unwrap();
-
-    let uri = format!("spotify:{}:{}", audio_type, id);
-
-    return SpotifyId::from_uri(&uri).or(Err(()))
-}
-
-fn try_automatic_login(session: &Session) -> Result<(), ()> {
-    let token_cache = "access_token.txt";
-
-    let token = std::fs::read_to_string(token_cache).or(Err(()))?;
-    env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &token);
-    let creds = Credentials::with_access_token(token);
-
-    block_on(session.connect(creds, false)).or(Err(()))?;
-    Ok(())
-}
-
-fn try_manual_login(session: &Session) -> Result<(), ()> {
-    let client_id = "c85b2435db4948bab5fcd3386b77170c";
-
-    let mut privelages = Vec::new();
-    privelages.push("playlist-read-private");
-    privelages.push("streaming");
-
-    let oauth_token = oauth::get_access_token(client_id, "http://localhost:8888/callback", privelages).or(Err(()))?;
-
-    if let Ok(mut out) = std::fs::File::create("access_token.txt") {
-    	println!("saving access token to access_token.txt");
-    	out.write_all(oauth_token.access_token.as_bytes()).or(Err(()))?;
-    } else {
-    	println!("could not save access token");
+    pub fn header(&self) {
+        println!("Spotify-DL");
+        println!("----------");
+        println!("logged in as {}", self.highlight.apply_to(self.session.username()));
+        println!("will download songs to {}", self.highlight.apply_to(std::env::current_dir().unwrap().display()));
+        println!("paste spotify links below to download them, or type 'help' for more options");
+        println!();
     }
 
-    env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &oauth_token.access_token);
+    pub fn usage(&self) {
+        println!("command syntax will go here");
+    }
 
-    let creds = Credentials::with_access_token(oauth_token.access_token);
-    block_on(session.connect(creds, false)).or(Err(()))?;
-
-    Ok(())
+    pub fn login(&self) -> Result<(), ()> {
+        if spotify::try_automatic_login(&self.session).is_err() {
+            println!("to log in, open the link below and click agree");
+            spotify::try_manual_login(&self.session).expect("failed to login");
+            println!();
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
 }
 
-fn get_tracks_to_download(id: SpotifyId, session: &Session) -> Vec<SpotifyId> {
-    let mut output = Vec::new();
+fn download(id: SpotifyId, ctx: &mut AppState, export_path: Option<&Path>) -> Result<(), ()> {
+    let checkmark = console::style("✔".to_string()).for_stdout().green();
+    let error     = console::style("✘".to_string()).for_stdout().red();
+    let dot       = console::style("·".to_string()).for_stdout().yellow().bright();
 
-	match id.item_type {
-    	SpotifyItemType::Playlist => {
-            let playlist = block_on(Playlist::get(&session, &id)).expect("failed to fetch playlist");
-            let mut count = 0;
-			for track in playlist.tracks() {
-    			output.push(*track);
-    			count += 1;
+    if let Some(p) = export_path {
+        std::fs::create_dir_all(p).expect("failed to create export directory");
+    }
+
+    let tracks = spotify::get_tracks_to_download(id, &ctx.session);
+    let size = tracks.len();
+
+	for (mut i, track_id) in tracks.into_iter().enumerate() {
+    	i += 1;
+    	let path = Path::new(&track_id.to_base62().unwrap()).with_extension("ogg");
+    	if path.exists() {
+        	println!("{} ({:02}/{:02}) {} : exists", checkmark, i, size, &track_id.to_base62().unwrap());
+    	}
+
+    	else {
+        	println!("{} ({:02}/{:02}) {}", dot, i, size, &track_id.to_base62().unwrap());
+    		let res = block_on(spotify::record_track(track_id, ctx.session.clone()));
+
+    		match res {
+        		Ok(name) => {
+            		ctx.terminal.clear_last_lines(1).unwrap();
+                	println!("{} ({:02}/{:02}) {} : {}", checkmark, i, size, &track_id.to_base62().unwrap(), name);
+        		},
+
+        		Err(message) => {
+            		ctx.terminal.clear_last_lines(1).unwrap();
+                	println!("{} ({:02}/{:02}) {} : {}", error, i, size, &track_id.to_base62().unwrap(), message);
+        		},
+    		}
+    	}
+
+    	if let Some(p) = export_path {
+        	let metadata = block_on(Track::get(&ctx.session, &track_id)).unwrap();
+        	let mut dest = p.join(sanitise(&metadata.name)).with_extension("ogg");
+        	let mut src = path.clone();
+			if std::fs::copy(path, dest).is_err() {
+    			// println!("copy failed");
 			}
-            println!("found playlist: {} with {} songs", playlist.name(), count);
-    	},
-
-    	SpotifyItemType::Album => {
-            let album = block_on(Album::get(&session, &id)).expect("failed to fetch playlist");
-            let mut count = 0;
-			for track in album.tracks() {
-    			output.push(*track);
-    			count += 1;
-			}
-            println!("found album: {} with {} songs", album.name, count);
-    	},
-
-    	SpotifyItemType::Track    => {
-        	output.push(id);
-    	},
-
-    	SpotifyItemType::Episode  => println!("episode"),
-    	SpotifyItemType::Show     => println!("show"),
-    	SpotifyItemType::Local    => println!("local"),
-    	SpotifyItemType::Artist   => println!("artist"),
-    	SpotifyItemType::Unknown  => println!("unknown"),
+    	}
 	}
 
-	return output;
+	println!();
+	Ok(())
 }
 
-async fn record_track(track: SpotifyId, session: Session) -> Result<(), ()> {
-    let mut player_config = playback_config::PlayerConfig::default();
-    player_config.passthrough = true;
-    let metadata = Track::get(&session, &track).await.unwrap();
+fn handle_command(cmd: String, ctx: &mut AppState) -> Result<(), ()>{
+    let mut iter = cmd.split(" ");
 
-    let path = format!("spotify-dl/{}.ogg", track.to_base62().unwrap());
+    match iter.next().ok_or(())? {
+        "" => return Ok(()),
+        "h" | "?" | "help" => ctx.usage(),
 
-    if std::path::Path::new(&path).exists() {
-        println!("skipping {} ({}), already exists", track.to_base62().unwrap(), metadata.name);
-        return Err(());
-    } else {
-        println!("fetching {} ({})", track.to_base62().unwrap(), metadata.name);
-    }
+        "logout" => {
+            println!("logging out");
+            ctx.session.shutdown();
+        },
 
-    let player = player::Player::new(player_config, session, Box::new(mixer::NoOpVolume), move || {
-        RecordSink::create(metadata)
-    });
+        "d" | "download" => {
+            let arg = iter.next().expect("no arg after download command");
+            let id = spotify::parse_link(arg).expect("invalid spoitfy link");
+            return download(id, ctx, None)
+        },
 
-    player.load(track, true, 0);
+        "e" | "export" => {
+            let path = iter.next().expect("export requires 2 arguments");
+            let link = iter.next().expect("export requires 2 arguments");
+            let id = spotify::parse_link(link).expect("invalid spoitfy link");
+            download(id, ctx, Some(Path::new(&path)))?;
+        },
 
-    let mut channel = player.get_player_event_channel();
-    while let Some(event) = channel.recv().await {
-        match event {
-            PlayerEvent::Playing      {..} => {},
-            PlayerEvent::TrackChanged {..} => {},
-            PlayerEvent::TimeToPreloadNextTrack {..} => (),
-
-            PlayerEvent::Unavailable  {..} => {
-                println!("spotify:track:{} is unavailable, aborting", track.to_base62().unwrap());
-                return Err(());
-            },
-
-            PlayerEvent::Paused {..} => {
-                println!("player paused, aborting");
-                player.stop();
-                return Err(());
-            },
-
-            PlayerEvent::EndOfTrack {..} => {
-                println!("done");
-                player.stop();
-                break;
-            },
-
-            event => println!("{:?}", event),
+        arg => {
+            let id = spotify::parse_link(arg)?;
+            return download(id, ctx, None);
         }
     }
 
     Ok(())
+}
+
+fn test_ffmpeg() -> Result<(), ()> {
+    let output = Command::new("ffmpeg").arg("-version").output().map_err(|_| ())?;
+    // let output = cmd.output().map_err(|e| ())?;
+
+    if output.status.code() == Some(0) {
+        Ok(())
+    } else {
+        Err(())
+    }
 }
 
 #[tokio::main]
 async fn main() {
-    let mut args = std::env::args();
-    _ = args.next();
-    let arg = args.next().expect("paste a spotify link as an argument");
+    let mut ctx = AppState::new(Term::stdout());
 
-    let config = SessionConfig::default();
-    let session = Session::new(config, None);
-
-    if try_automatic_login(&session).is_err() {
-        println!("failed automatic login, please login manually");
-        try_manual_login(&session).expect("failed to login");
+    if test_ffmpeg().is_err() {
+        println!("ffmpeg is not installed properly, please fix that by installing it from here:");
+        println!("https://ffmpeg.org/download.html");
+        println!();
+        return;
     }
 
-    let _ = std::fs::create_dir("spotify-dl");
+    ctx.login().expect("failed to log in");
+    ctx.header();
 
-	let id = parse_spotify_link(&arg).expect("invalid link");
-	let tracks = get_tracks_to_download(id, &session);
+	let mut rl = DefaultEditor::new().unwrap();
 
-	println!("downloading {} tracks with ids:", tracks.len());
-	for id in tracks.iter() {
-    	println!("spotify:track:{}", id.to_base62().unwrap());
-	}
-	println!();
-
-	for id in tracks {
-        if record_track(id, session.clone()).await.is_err() {
-            println!("failed");
+    loop {
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str()).unwrap();
+                handle_command(line, &mut ctx).unwrap();
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break
+            },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break
+            }
         }
-	}
+    }
 }

@@ -25,4 +25,8 @@ lazy_static = "1.4"
 futures-executor = "^0.3.31"
 # easy-repl = "0.2.1"
 dialoguer = "0.11.0"
+console = "0.16.0"
 # futures = "^0.3.31"
+
+rustyline = "15.0.0"
+sanitise-file-name = "1.0.0"
