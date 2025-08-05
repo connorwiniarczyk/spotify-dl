@@ -1,6 +1,6 @@
 [package]
 name = "spotify-dl"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 default-run = "spotify-dl"
 
@@ -8,25 +8,16 @@ default-run = "spotify-dl"
 name = "spotify-dl"
 path = "src/main.rs"
 
-# [[bin]]
-# name = "spotify-dl-downloader"
-# path = "src/download.rs"
-
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-librespot = { version = "0.6.0", features = ["passthrough-decoder"] }
+
+librespot = { version = "0.6.0-dev", features = ["passthrough-decoder"], path = "../librespot" }
+
 tokio = "1.20.1"
-# inquire = "0.3.0"
-# clap = "3.2.17"
 regex = "1.6"
 lazy_static = "1.4"
 futures-executor = "^0.3.31"
-# easy-repl = "0.2.1"
 dialoguer = "0.11.0"
 console = "0.16.0"
-# futures = "^0.3.31"
 
 rustyline = "15.0.0"
 sanitise-file-name = "1.0.0"

@@ -35,6 +35,8 @@ lazy_static! {
     pub static ref highlight: Style  = Style::new().cyan();
 }
 
+// pub static mut CREDS: Option<spotify::Credentials> = None;
+
 fn enter_working_directory() {
     let home = std::env::home_dir().expect("could not find home dir");
     let workdir = home.join("Music/spotify-dl");
@@ -43,9 +45,12 @@ fn enter_working_directory() {
 }
 
 pub fn header(session: &Session) {
+    let version_major = env!("CARGO_PKG_VERSION_MAJOR");
+    let version_minor = env!("CARGO_PKG_VERSION_MINOR");
+
     println!("Spotify-DL");
     println!("----------");
-    println!("version: {}", env!("CARGO_PKG_VERSION"));
+    println!("version: {}", format!("{}.{}", version_major, version_minor));
     println!("logged in as {}", highlight.apply_to(session.username()));
     println!("will download songs to {}", highlight.apply_to(std::env::current_dir().unwrap().display()));
     println!("paste spotify links below to download them, or type 'help' for more options");
@@ -62,22 +67,18 @@ pub fn usage() {
     println!();
 }
 
-
-fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) -> Result<(), ()> {
+async fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) -> Result<(), ()> {
     let checkmark = console::style("✔".to_string()).for_stdout().green();
     let error     = console::style("✘".to_string()).for_stdout().red();
     let dot       = console::style("·".to_string()).for_stdout().yellow().bright();
-
-    // session.shutdown();
-    spotify::connect(&session).unwrap();
 
     if let Some(p) = export_path {
         std::fs::create_dir_all(p).expect("failed to create export directory");
     }
 
     let tracks = spotify::get_tracks_to_download(id, session);
-    let size = tracks.len();
 
+    let size = tracks.len();
 	for (mut i, track_id) in tracks.into_iter().enumerate() {
     	i += 1;
     	let path = Path::new(&track_id.to_base62().unwrap()).with_extension("ogg");
@@ -87,7 +88,7 @@ fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) -> Res
 
     	else {
         	println!("{} ({:02}/{:02}) {}", dot, i, size, &track_id.to_base62().unwrap());
-    		let res = block_on(spotify::record_track(track_id, session.clone()));
+    		let res = spotify::record_track(track_id, session.clone()).await;
 
     		match res {
         		Ok(name) => {
@@ -103,19 +104,20 @@ fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) -> Res
     	}
 
     	if let Some(p) = export_path {
-        	let metadata = block_on(Track::get(session, &track_id)).unwrap();
+        	let metadata = Track::get(session, &track_id).await.unwrap();
         	let dest = p.join(sanitise(&metadata.name)).with_extension("ogg");
 			if std::fs::copy(path, dest).is_err() {
-    			// println!("copy failed");
+    			println!("copy failed");
 			}
     	}
+
 	}
 
 	println!();
 	Ok(())
 }
 
-fn handle_command(cmd: String, ctx: &Session) -> Result<(), ()>{
+async fn handle_command(cmd: String, ctx: &Session) -> Result<(), ()>{
     let mut iter = cmd.split(" ");
 
     match iter.next().ok_or(())? {
@@ -126,19 +128,20 @@ fn handle_command(cmd: String, ctx: &Session) -> Result<(), ()>{
         "d" | "download" => {
             let arg = iter.next().expect("no arg after download command");
             let id = spotify::parse_link(arg).expect("invalid spoitfy link");
-            return download(id, ctx, None)
+            let result = download(id, ctx, None).await;
+            return result
         },
 
         "e" | "export" => {
             let path = iter.next().expect("export requires 2 arguments");
             let link = iter.next().expect("export requires 2 arguments");
             let id = spotify::parse_link(link).expect("invalid spoitfy link");
-            download(id, ctx, Some(Path::new(&path)))?;
+            download(id, ctx, Some(Path::new(&path))).await?;
         },
 
         arg => {
             let id = spotify::parse_link(arg)?;
-            return download(id, ctx, None);
+            return download(id, ctx, None).await;
         }
     }
 
@@ -168,8 +171,8 @@ async fn main() {
     }
 
     let session = Session::new(SessionConfig::default(), None);
+    let _creds = spotify::connect(&session).expect("failed to log in");
 
-    spotify::connect(&session).expect("failed to log in");
     header(&session);
 
 	let mut rl = DefaultEditor::new().unwrap();
@@ -179,7 +182,7 @@ async fn main() {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str()).unwrap();
-                if handle_command(line, &session).is_err() {
+                if handle_command(line, &session).await.is_err() {
                     break;
                 }
             },

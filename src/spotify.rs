@@ -1,4 +1,4 @@
-use librespot::core::authentication::Credentials;
+pub use librespot::core::authentication::Credentials;
 use librespot::core::config::SessionConfig;
 use librespot::core::session::Session;
 use librespot::oauth;
@@ -46,25 +46,31 @@ pub fn parse_link(input: &str) -> Result<SpotifyId, ()> {
     return SpotifyId::from_uri(&uri).or(Err(()))
 }
 
-pub fn get_stored_credentials() -> Result<Credentials, ()> {
+fn get_stored_credentials() -> Result<Credentials, ()> {
     let token_cache = "access_token.txt";
 
     let token = std::fs::read_to_string(token_cache).or(Err(()))?;
     env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &token);
     let creds = Credentials::with_access_token(token);
 
-    // block_on(session.connect(creds, false)).or(Err(()))?;
     Ok(creds)
 }
 
-pub fn try_manual_login() -> Result<Credentials, ()> {
+fn try_oauth_login() -> Result<Credentials, ()> {
     let client_id = "c85b2435db4948bab5fcd3386b77170c";
+    let callback_url = "http://localhost:8888/callback";
 
     let mut privelages = Vec::new();
     privelages.push("playlist-read-private");
     privelages.push("streaming");
 
-    let oauth_token = oauth::get_access_token(client_id, "http://localhost:8888/callback", privelages).or(Err(()))?;
+    let oauth_client = oauth::OAuthClientBuilder::new(client_id, callback_url, privelages)
+    	.open_in_browser()
+    	.with_custom_message("go back to your terminal")
+		.build()
+		.unwrap();
+
+    let oauth_token = oauth_client.get_access_token().unwrap();
 
     if let Ok(mut out) = std::fs::File::create("access_token.txt") {
     	println!("saving access token to access_token.txt");
@@ -78,16 +84,16 @@ pub fn try_manual_login() -> Result<Credentials, ()> {
     Ok(creds)
 }
 
-pub fn connect(session: &Session) -> Result<(), ()> {
+pub fn connect(session: &Session) -> Result<Credentials, ()> {
     if let Ok(creds) = get_stored_credentials() {
-        if block_on(session.connect(creds, true)).is_ok() {
-			return Ok(());
+        if block_on(session.connect(creds.clone(), true)).is_ok() {
+			return Ok(creds);
         }
     }
 
-    if let Ok(creds) = try_manual_login() {
-        if block_on(session.connect(creds, true)).is_ok() {
-			return Ok(());
+    if let Ok(creds) = try_oauth_login() {
+        if block_on(session.connect(creds.clone(), true)).is_ok() {
+			return Ok(creds);
         }
     }
 
