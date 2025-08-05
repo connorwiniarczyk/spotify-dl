@@ -4,39 +4,36 @@ Spotify-DL is a command line tool that downloads songs from Spotify.
 It uses
 [librespot](https://github.com/librespot-org/librespot)
 to implement a custom Spotify client that "plays" the tracks you select
-into a local ogg/vorbis file instead of to your speakers.
+into local ogg/vorbis files instead of to your audio hardware.
+To use it, simply log into your premium account and paste a link to a track, album, or playlist,
+Spotify-DL will download all of the tracks pointed to by the link to a folder located in
+$HOME/Music/spotify-dl.
+
+Files are named after their unique spotify id, rather than their title, which makes it
+easier to detect and skip duplicates. Once downloaded, tracks can be copied into a separate
+folder with human readable file names by using the `export` command.
 
 [![asciicast](https://asciinema.org/a/731843.svg)](https://asciinema.org/a/731843)
 
 ## Installation
 
-Installing spotify-dl requires [ffmpeg](https://ffmpeg.org/) and the
-[rust toolchain](https://www.rust-lang.org/tools/install).
+Spotify-DL can be installed using cargo like so:
 
 ```bash
 cargo install --git https://github.com/connorwiniarczyk/spotify-dl
 ```
 
-or
+Of built from source like so:
 
 ```bash
 git clone https://github.com/connorwiniarczyk/spotify-dl
 cd spotify-dl
-cargo install --path .
+cargo build --release
 ```
 
-## Usage
+This requires the rust toolchain to be installed. Which can be done by
+following the instructions here:
+https://rustup.rs/
 
-You must have a premium Spotify account to use this script. When you run it
-for the first time it will prompt you for your username and password. It will
-also give you the option to save these to a local file called `spotify-dl.conf`
-so you won't have to type these again each time you run the tool.
-
-```bash
-spotify-dl https://open.spotify.com/album/6IGDCUkBJ3LEUoAcoTD46u
-```
-
-This will download each track from the album Yesterday's Tomorrow into a new
-folder called Yesterday's Tomorrow. Files are automatically converted to the 
-[FLAC](https://xiph.org/flac/) codec, but this can be changed by modifying the
-source and recompiling. (main.rs, line 72)
+Running Spotify-DL requires the `ffmpeg` binary, which can be installed here:
+https://ffmpeg.org/download.html
