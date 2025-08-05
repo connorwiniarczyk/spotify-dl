@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 
-librespot = { version = "0.6.0-dev", features = ["passthrough-decoder"], path = "../librespot" }
+librespot = { version = "0.6.0-dev", features = ["passthrough-decoder"], path = "librespot" }
 
 tokio = "1.20.1"
 regex = "1.6"

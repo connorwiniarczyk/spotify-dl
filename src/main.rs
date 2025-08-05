@@ -44,7 +44,7 @@ fn enter_working_directory() {
     std::env::set_current_dir(&workdir).unwrap();
 }
 
-pub fn header(session: &Session) {
+pub fn print_session_header(session: &Session) {
     let version_major = env!("CARGO_PKG_VERSION_MAJOR");
     let version_minor = env!("CARGO_PKG_VERSION_MINOR");
 
@@ -125,6 +125,11 @@ async fn handle_command(cmd: String, ctx: &Session) -> Result<(), ()>{
         "h" | "?" | "help" => usage(),
         "q" | "quit" | "exit" => return Err(()),
 
+        "logout" => {
+            let _ = std::fs::remove_file("access_token.txt");
+            return Err(());
+        },
+
         "d" | "download" => {
             let arg = iter.next().expect("no arg after download command");
             let id = spotify::parse_link(arg).expect("invalid spoitfy link");
@@ -173,7 +178,7 @@ async fn main() {
     let session = Session::new(SessionConfig::default(), None);
     let _creds = spotify::connect(&session).expect("failed to log in");
 
-    header(&session);
+    print_session_header(&session);
 
 	let mut rl = DefaultEditor::new().unwrap();
 

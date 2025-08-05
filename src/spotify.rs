@@ -66,7 +66,7 @@ fn try_oauth_login() -> Result<Credentials, ()> {
 
     let oauth_client = oauth::OAuthClientBuilder::new(client_id, callback_url, privelages)
     	.open_in_browser()
-    	.with_custom_message("go back to your terminal")
+    	.with_custom_message("go back to your terminal :)")
 		.build()
 		.unwrap();
 
