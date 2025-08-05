@@ -106,9 +106,12 @@ async fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) 
     	if let Some(p) = export_path {
         	let metadata = Track::get(session, &track_id).await.unwrap();
         	let dest = p.join(sanitise(&metadata.name)).with_extension("ogg");
+
+        	println!("exporting {}", dest.display());
 			if std::fs::copy(path, dest).is_err() {
     			println!("copy failed");
 			}
+			println!();
     	}
 
 	}

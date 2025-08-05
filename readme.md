@@ -1,10 +1,12 @@
 # Spotify-DL
 
-Spotify-DL is a tool for downloading songs from Spotify onto a local disk
+Spotify-DL is a command line tool that downloads songs from Spotify.
+It uses
+[librespot](https://github.com/librespot-org/librespot)
+to implement a custom Spotify client that "plays" the tracks you select
+into a local ogg/vorbis file instead of to your speakers.
 
-This is a cli tool for downloading Spotify tracks, albums, and playlists onto
-a local disk using the [librespot](https://github.com/librespot-org/librespot)
-library.
+[![asciicast](https://asciinema.org/a/731843.svg)](https://asciinema.org/a/731843)
 
 ## Installation
 
@@ -38,18 +40,3 @@ This will download each track from the album Yesterday's Tomorrow into a new
 folder called Yesterday's Tomorrow. Files are automatically converted to the 
 [FLAC](https://xiph.org/flac/) codec, but this can be changed by modifying the
 source and recompiling. (main.rs, line 72)
-
-## How It Works
-
-As far as I know, nothing in the librespot library allows you to directly
-download audio from Spotify, but it does give you the option to use the
-process's stdout as a playback device, allowing you to pipe the audio to
-another program or save it directly to a file. It also gives you the option to
-"play" the audio directly as ogg packets instead of decoding them first.
-
-This tool includes a binary called `spotify-direct-play` which is a very simple
-spotify client that takes a username, password, and track id as arguments and
-"plays" the entirety of the track to stdout before exiting. spotify-dl spawns
-an instance of spotify-direct-play for every track it is given, and directs its
-output into an instance of ffmpeg which transcodes the audio into FLAC and tags
-it with the appropriate metadata before saving it to a local file.
