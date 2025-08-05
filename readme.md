@@ -1,4 +1,6 @@
-# spotify-dl
+# Spotify-DL
+
+Spotify-DL is a tool for downloading songs from Spotify onto a local disk
 
 This is a cli tool for downloading Spotify tracks, albums, and playlists onto
 a local disk using the [librespot](https://github.com/librespot-org/librespot)

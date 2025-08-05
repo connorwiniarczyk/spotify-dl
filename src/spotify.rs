@@ -46,18 +46,18 @@ pub fn parse_link(input: &str) -> Result<SpotifyId, ()> {
     return SpotifyId::from_uri(&uri).or(Err(()))
 }
 
-pub fn try_automatic_login(session: &Session) -> Result<(), ()> {
+pub fn get_stored_credentials() -> Result<Credentials, ()> {
     let token_cache = "access_token.txt";
 
     let token = std::fs::read_to_string(token_cache).or(Err(()))?;
     env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &token);
     let creds = Credentials::with_access_token(token);
 
-    block_on(session.connect(creds, false)).or(Err(()))?;
-    Ok(())
+    // block_on(session.connect(creds, false)).or(Err(()))?;
+    Ok(creds)
 }
 
-pub fn try_manual_login(session: &Session) -> Result<(), ()> {
+pub fn try_manual_login() -> Result<Credentials, ()> {
     let client_id = "c85b2435db4948bab5fcd3386b77170c";
 
     let mut privelages = Vec::new();
@@ -74,11 +74,24 @@ pub fn try_manual_login(session: &Session) -> Result<(), ()> {
     }
 
     env::set_var("SPOTIFY_DL_ACCESS_TOKEN", &oauth_token.access_token);
-
     let creds = Credentials::with_access_token(oauth_token.access_token);
-    block_on(session.connect(creds, false)).or(Err(()))?;
+    Ok(creds)
+}
 
-    Ok(())
+pub fn connect(session: &Session) -> Result<(), ()> {
+    if let Ok(creds) = get_stored_credentials() {
+        if block_on(session.connect(creds, true)).is_ok() {
+			return Ok(());
+        }
+    }
+
+    if let Ok(creds) = try_manual_login() {
+        if block_on(session.connect(creds, true)).is_ok() {
+			return Ok(());
+        }
+    }
+
+    return Err(())
 }
 
 pub fn get_tracks_to_download(id: SpotifyId, session: &Session) -> Vec<SpotifyId> {
