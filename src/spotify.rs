@@ -1,6 +1,10 @@
+use crate::Error;
+
 pub use librespot::core::authentication::Credentials;
-use librespot::core::config::SessionConfig;
-use librespot::core::session::Session;
+pub use librespot::core::config::SessionConfig;
+pub use librespot::core::session::Session;
+pub use librespot::core::spotify_id::SpotifyId;
+
 use librespot::oauth;
 
 use librespot::playback::config as playback_config;
@@ -8,7 +12,6 @@ use librespot::playback::player;
 use librespot::playback::player::PlayerEvent;
 use librespot::playback::mixer;
 
-use librespot::core::spotify_id::SpotifyId;
 use librespot::core::spotify_id::SpotifyItemType;
 
 use librespot::metadata::{
@@ -16,7 +19,6 @@ use librespot::metadata::{
     Playlist,
     Track,
     Album,
-    // Artist,
 };
 
 use futures_executor::block_on;
@@ -30,20 +32,20 @@ use std::path::Path;
 
 use crate::RecordSink;
 
-pub fn parse_link(input: &str) -> Result<SpotifyId, ()> {
+pub fn parse_link(input: &str) -> Result<SpotifyId, Error> {
     lazy_static! {
         static ref RE: Regex = Regex::new(r#"open\.spotify\.com/(?P<type>.+?)/(?P<id>.+?)$"#).unwrap();
     }
 
-    let captures = RE.captures(input).ok_or(())?;
-    let audio_type = captures.name("type").ok_or(())?.as_str();
+    let captures = RE.captures(input).ok_or(Error::invalid_link(input))?;
+    let audio_type = captures.name("type").ok_or(Error::invalid_link(input))?.as_str();
 
-    let id_full = captures.name("id").ok_or(())?.as_str();
-    let id = id_full.split("?").next().unwrap();
+    let id_full = captures.name("id").ok_or(Error::invalid_link(input))?.as_str();
+    let id = id_full.split("?").next().ok_or(Error::invalid_link(input))?;
 
     let uri = format!("spotify:{}:{}", audio_type, id);
 
-    return SpotifyId::from_uri(&uri).or(Err(()))
+    return SpotifyId::from_uri(&uri).or(Err(Error::invalid_link(input)))
 }
 
 fn get_stored_credentials() -> Result<Credentials, ()> {
@@ -140,14 +142,16 @@ pub fn get_tracks_to_download(id: SpotifyId, session: &Session) -> Vec<SpotifyId
 	return output;
 }
 
-pub async fn record_track(track: SpotifyId, session: Session) -> Result<String, String> {
+pub async fn record_track(track: SpotifyId, session: Session) -> Result<String, Error> {
     let mut player_config = playback_config::PlayerConfig::default();
     player_config.passthrough = true;
-    let metadata = Track::get(&session, &track).await.unwrap();
+
+    let metadata = Track::get(&session, &track).await.or(Err(Error::Unavailable(track)))?;
     let path = Path::new(&track.to_base62().unwrap()).with_extension("ogg");
 
     if std::path::Path::new(&path).exists() {
-        return Err("already exists".into());
+        return Err(Error::Exists(track));
+        // return Err("already exists".into());
     }
 
     let name = metadata.name.clone();
@@ -166,12 +170,14 @@ pub async fn record_track(track: SpotifyId, session: Session) -> Result<String, 
             PlayerEvent::TimeToPreloadNextTrack {..} => (),
 
             PlayerEvent::Unavailable  {..} => {
-                return Err(format!("unavailable, you can try again later - {}", name));
+                return Err(Error::Unavailable(track))
+                // return Err(format!("unavailable, you can try again later - {}", name));
             },
 
             PlayerEvent::Paused {..} => {
                 player.stop();
-                return Err(format!("received the pause command, aborting - {}", name));
+                return Err(Error::EarlyPause);
+                // return Err(format!("received the pause command, aborting - {}", name));
             },
 
             PlayerEvent::EndOfTrack {..} => {

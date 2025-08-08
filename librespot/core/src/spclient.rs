@@ -450,7 +450,17 @@ impl SpClient {
 
             // Reconnection logic: retrieve the endpoint every iteration, so we can try
             // another access point when we are experiencing network issues (see below).
-            let mut url = self.base_url().await?;
+            //
+            // let mut url = self.base_url().await?;
+            // url.push_str(endpoint);
+
+			// workaround for spotify missing tracks bug, replaces above
+            let mut url = if endpoint.starts_with("/metadata") {
+                String::from("https://spclient.wg.spotify.com")
+            } else {
+                self.base_url().await?
+            };
+
             url.push_str(endpoint);
 
             // Add metrics. There is also an optional `partner` key with a value like

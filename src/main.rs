@@ -1,13 +1,15 @@
-#![allow(unused_imports, dead_code)]
-
 mod record;
 mod spotify;
+mod error;
+
+use error::Error;
 use record::RecordSink;
 
-use librespot::core::config::SessionConfig;
-use librespot::core::session::Session;
-use librespot::core::spotify_id::SpotifyId;
-use librespot::core::spotify_id::SpotifyItemType;
+use spotify::SessionConfig;
+use spotify::Session;
+use spotify::SpotifyId;
+
+
 use librespot::metadata::{
     Metadata,
     Track,
@@ -20,10 +22,7 @@ use rustyline::{DefaultEditor};
 use console::Style;
 use console::Term;
 
-use futures_executor::block_on;
-
 use tokio;
-use std::io::Write;
 use std::env;
 use std::path::Path;
 use std::process::Command;
@@ -67,7 +66,7 @@ pub fn usage() {
     println!();
 }
 
-async fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) -> Result<(), ()> {
+async fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) -> Result<(), Error> {
     let checkmark = console::style("✔".to_string()).for_stdout().green();
     let error     = console::style("✘".to_string()).for_stdout().red();
     let dot       = console::style("·".to_string()).for_stdout().yellow().bright();
@@ -120,17 +119,17 @@ async fn download(id: SpotifyId, session: &Session, export_path: Option<&Path>) 
 	Ok(())
 }
 
-async fn handle_command(cmd: String, ctx: &Session) -> Result<(), ()>{
+async fn handle_command(cmd: String, ctx: &Session) -> Result<(), Error> {
     let mut iter = cmd.split(" ");
 
-    match iter.next().ok_or(())? {
+    match iter.next().ok_or(Error::Empty)? {
         "" => return Ok(()),
         "h" | "?" | "help" => usage(),
-        "q" | "quit" | "exit" => return Err(()),
+        "q" | "quit" | "exit" => return Err(Error::Empty),
 
         "logout" => {
             let _ = std::fs::remove_file("access_token.txt");
-            return Err(());
+            return Err(Error::Empty);
         },
 
         "d" | "download" => {
